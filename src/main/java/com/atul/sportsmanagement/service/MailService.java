@@ -16,7 +16,6 @@ import org.thymeleaf.context.Context;
 
 @Service
 @AllArgsConstructor
-@Slf4j
 class MailService {
 
     private final JavaMailSender mailSender;
@@ -34,9 +33,8 @@ class MailService {
         };
         try {
             mailSender.send(messagePreparator);
-            log.info("Activation email sent!!");
         } catch (MailException e) {
-            log.error("Exception occurred when sending mail", e);
+
             throw new SpringSportsException("Exception occurred when sending mail to " + notificationEmail.getRecipient(), e);
         }
     }
@@ -46,7 +44,7 @@ class MailService {
             MimeMessageHelper messageHelper = new MimeMessageHelper(mimeMessage);
             messageHelper.setFrom("sports@tiaa.com");
             messageHelper.setTo(recipient);
-            messageHelper.setSubject("Team Invite");
+            messageHelper.setSubject("Member Request");
             String content = mailContentBuilder.buildHtml(name,team,event,url);
             messageHelper.setText(content, true);
         };

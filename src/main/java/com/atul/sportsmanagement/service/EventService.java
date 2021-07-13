@@ -2,20 +2,15 @@ package com.atul.sportsmanagement.service;
 
 import com.atul.sportsmanagement.dto.*;
 import com.atul.sportsmanagement.exceptions.*;
-import com.atul.sportsmanagement.mapper.EventMapper;
-import com.atul.sportsmanagement.mapper.TeamMapper;
-import com.atul.sportsmanagement.mapper.UserMapper;
-import com.atul.sportsmanagement.mapper.WinnersMapper;
+import com.atul.sportsmanagement.mapper.*;
 import com.atul.sportsmanagement.model.*;
-import com.atul.sportsmanagement.repository.EventRepository;
-import com.atul.sportsmanagement.repository.ScheduleRepository;
-import com.atul.sportsmanagement.repository.TeamsRepository;
-import com.atul.sportsmanagement.repository.UserRepository;
+import com.atul.sportsmanagement.repository.*;
 import com.atul.sportsmanagement.utils.DateUtils;
+import com.atul.sportsmanagement.utils.EmailScheduler;
 import com.atul.sportsmanagement.utils.ScheduleUtils;
 import com.atul.sportsmanagement.utils.TokenUtils;
 import lombok.AllArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.quartz.Scheduler;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -23,13 +18,14 @@ import org.springframework.stereotype.Service;
 import javax.transaction.Transactional;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @AllArgsConstructor
-@Slf4j
 @Transactional
 public class EventService {
     private final EventMapper eventMapper;
@@ -42,12 +38,25 @@ public class EventService {
     private final NotificationService notificationService;
     private final ScheduleRepository scheduleRepository;
     private final UserRepository userRepository;
+    private final Scheduler scheduler;
+    private final FeedbackRepository feedbackRepository;
+    private final FeedbackMapper feedbackMapper;
 
     public void save(EventRequest eventRequest) {
         Event event = eventMapper.map(eventRequest);
         event.setIsPublished(true);
-        Event res = eventRepository.save(event);
-        eventMapper.mapToDto(res);
+        eventRepository.save(event);
+        //Send a reminder notification to event creator 1 day before event to edit event if he wants
+        User admin = authService.getCurrentUser();
+        EmailRequest emailRequest = new EmailRequest();
+        emailRequest.setEmail(admin.getEmail());
+        emailRequest.setSubject("Reminder for " + event.getEventName() + " event");
+        emailRequest.setBody(event.getEventName() + " event is starting on " + event.getEventDate() + ".<br> You can edit the event before event date.");
+        emailRequest.setDateTime(LocalDateTime.ofInstant(event.getEventDate().minus(1, ChronoUnit.DAYS), ZoneId.of("Asia/Kolkata")).withHour(10).withMinute(0).withSecond(0));
+        emailRequest.setTimeZone(ZoneId.of("Asia/Kolkata"));
+        EmailScheduler emailScheduler = new EmailScheduler(scheduler);
+        EmailResponse emailResponse = emailScheduler.scheduleEmail(emailRequest);
+        System.out.println(emailResponse.getMessage());
     }
 
     public Event getEventById(Long id) {
@@ -55,43 +64,47 @@ public class EventService {
                 .orElseThrow(() -> new EventNotFoundException("No Event with id: " + id));
     }
 
-    public List<EventResponse> getAllEvents(String filter) {
+    private List<Event> filterEvents() {
         User user = authService.getCurrentUser();
-        List<Event> responses = eventRepository.findAllByOrderByCreatedDateDesc()
+        return eventRepository.findAllByOrderByCreatedDateDesc()
                 .parallelStream()
                 .filter((event) -> event.getEventDate().isAfter(LocalDateTime.now().toInstant(ZoneOffset.UTC)))
                 .filter((event) -> !event.getParticipants().contains(user))
                 .filter((event) -> !teamsRepository.findTeamsByAdminUserIdAndEventId(user.getUserId(), event.getEventId()).isPresent())
                 .filter((event) -> event.getTeamsParticipated().parallelStream().noneMatch((team) -> team.getMembers().contains(user)))
                 .collect(Collectors.toList());
-        List<EventResponse> filteredEvents = new ArrayList<>();
-        switch (filter) {
-            case "all":
-                filteredEvents = responses.stream().map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
+    }
+
+    public List<EventResponse> getAllEvents() {
+        return filterEvents().parallelStream().map(eventMapper::mapToDto).collect(Collectors.toList());
+    }
+
+    public List<EventResponse> getEventsByTime(String time) {
+        List<Event> responses = filterEvents();
+        switch (time) {
             case "thisWeek":
-                filteredEvents = responses.stream().filter((event) -> DateUtils.thisWeek(event.getEventDate())).map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
+                return responses.stream().filter((event) -> DateUtils.thisWeek(event.getEventDate())).map(eventMapper::mapToDto).collect(Collectors.toList());
             case "thisMonth":
-                filteredEvents = responses.stream().filter((event) -> DateUtils.thisMonth(event.getEventDate())).map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
+                return responses.stream().filter((event) -> DateUtils.thisMonth(event.getEventDate())).map(eventMapper::mapToDto).collect(Collectors.toList());
             case "nextMonth":
-                filteredEvents = responses.stream().filter((event) -> DateUtils.nextMonth(event.getEventDate())).map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
-            case "INDIVIDUAL":
-                filteredEvents = responses.stream().filter((event -> event.getType().equals(EventType.INDIVIDUAL))).map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
-            case "TEAM":
-                filteredEvents = responses.stream().filter((event -> event.getType().equals(EventType.TEAM))).map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
-            case "INDOOR":
-                filteredEvents = responses.stream().filter((event -> event.getVenue().equals("INDOOR"))).map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
-            case "OUTDOOR":
-                filteredEvents = responses.stream().filter((event -> event.getVenue().equals("OUTDOOR"))).map(eventMapper::mapToDto).collect(Collectors.toList());
-                break;
+                return responses.stream().filter((event) -> DateUtils.nextMonth(event.getEventDate())).map(eventMapper::mapToDto).collect(Collectors.toList());
         }
-        return filteredEvents;
+        return null;
+    }
+
+    public List<EventResponse> getEventsByCategory(String category) {
+        List<Event> responses = filterEvents();
+        return responses.parallelStream().filter((event) -> event.getCategory().equals(category)).map(eventMapper::mapToDto).collect(Collectors.toList());
+    }
+
+    public List<EventResponse> getEventsByVenue(String venue) {
+        List<Event> responses = filterEvents();
+        return responses.parallelStream().filter((event) -> event.getVenue().equals(venue)).map(eventMapper::mapToDto).collect(Collectors.toList());
+    }
+
+    public List<EventResponse> getEventsByType(String type) {
+        List<Event> responses = filterEvents();
+        return responses.parallelStream().filter((event) -> event.getType().equals(type.equals("TEAM") ? EventType.TEAM : EventType.INDIVIDUAL)).map(eventMapper::mapToDto).collect(Collectors.toList());
     }
 
     public void joinToSportEvent(Long id) throws AlreadyJoinedException, NoEmptyPlaceException {
@@ -109,15 +122,23 @@ public class EventService {
         }
     }
 
-    public Set<EventResponse> getMyEvents() {
+    public Set<EventResponse> getMyEvents(boolean closed) {
         User user = authService.getCurrentUser();
         Set<Event> events = user.getEventsImAttending();
         Optional<Set<Teams>> teamsByAdminUserId = teamsRepository.findTeamsByAdminUserId(user.getUserId());
         if (teamsByAdminUserId.isPresent()) {
             Set<Long> userEventsIds = teamsByAdminUserId.get().parallelStream().map(Teams::getEventId).collect(Collectors.toSet());
-            userEventsIds.forEach(id -> events.add(eventRepository.findById(id).get()));
+            for (Long eventId : userEventsIds) {
+                events.add(eventRepository.findById(eventId).get());
+            }
         }
-        return events.parallelStream().map(eventMapper::mapToDto).collect(Collectors.toSet());
+        if (closed) {
+            return events.parallelStream().filter((event) -> event.getEventDate().isBefore(LocalDateTime.now().toInstant(ZoneOffset.UTC))).map(eventMapper::mapToDto).collect(Collectors.toSet());
+        } else {
+            Set<Event> filtered = events.parallelStream().filter((event) -> event.getEventDate().isAfter(LocalDateTime.now().toInstant(ZoneOffset.UTC))).collect(Collectors.toSet());
+            return filtered.parallelStream().map(eventMapper::mapToDto).collect(Collectors.toSet());
+        }
+
     }
 
     public void leaveFromEvent(Long id) throws NotParticipatedException, EventNotFoundException {
@@ -156,6 +177,8 @@ public class EventService {
 
     public void deleteEvent(Long id) throws RegisterAsAdminException {
         eventRepository.deleteById(id);
+        //delete the email job;
+
     }
 
 
@@ -199,9 +222,17 @@ public class EventService {
                 .collect(Collectors.toList());
     }
 
+    //for anouncing winners
     public List<EventResponse> getExpiredEvents() {
-        return eventRepository.findAll().stream()
+        return eventRepository.findAll().parallelStream()
                 .filter((event -> event.getWinners() == null))
+                .filter((event) -> event.getEventDate().isBefore(LocalDateTime.now().toInstant(ZoneOffset.UTC)))
+                .map(eventMapper::mapToDto)
+                .collect(Collectors.toList());
+    }
+    //for getting feedbacks of events
+    public List<EventResponse> getAllEventsExpired() {
+        return eventRepository.findAll().parallelStream()
                 .filter((event) -> event.getEventDate().isBefore(LocalDateTime.now().toInstant(ZoneOffset.UTC)))
                 .map(eventMapper::mapToDto)
                 .collect(Collectors.toList());
@@ -225,7 +256,7 @@ public class EventService {
             // generate a team invite;
             String token = TokenUtils.generateToken(save.getTeamId().toString());
             InviteLink link = new InviteLink();
-            String url = "http://localhost:4200/userhome/invite?token=" + token;
+            String url = "http://localhost:4200/userhome/invite/" + token;
             link.setLink(url);
             save.setInviteLink(url);
             teamsRepository.save(save);
@@ -269,17 +300,17 @@ public class EventService {
         String[] userNames = null;
         String[] teamNames = null;
         boolean isIndividual = event.getType().equals(EventType.INDIVIDUAL);
+        List<String> collect;
         if (isIndividual) {
-            List<String> collect = event.getParticipants().stream().map(User::getUsername).collect(Collectors.toList());
+            collect = event.getParticipants().stream().map(User::getUsername).collect(Collectors.toList());
             userNames = new String[collect.size()];
             collect.toArray(userNames);
-            collect.clear();
         } else {
-            List<String> collect = event.getTeamsParticipated().stream().map(Teams::getName).collect(Collectors.toList());
+            collect = event.getTeamsParticipated().stream().map(Teams::getName).collect(Collectors.toList());
             teamNames = new String[collect.size()];
             collect.toArray(teamNames);
-            collect.clear();
         }
+        collect.clear();
         if (methodName.equals("se")) {
             List<Match> matches = ScheduleUtils.generateBySingleElimination(isIndividual ? userNames.length : teamNames.length, isIndividual ? userNames : teamNames);
             Schedule schedule = new Schedule();
@@ -312,5 +343,24 @@ public class EventService {
     public Schedule viewSchedule(Long id) {
         return scheduleRepository.findByEventId(id).orElseThrow(() -> new SpringSportsException("No Schedule Announced for this Event"));
     }
+
+    public void feedback(Long eventId, FeedbackRequest feedbackRequest) {
+        User user = authService.getCurrentUser();
+        Optional<Feedback> byEventIdAndAndUserId = feedbackRepository.findByEventIdAndAndUserId(eventId, user.getUserId());
+        if (byEventIdAndAndUserId.isPresent()) {
+            throw new SpringSportsException("You had already given the Feedback");
+        } else {
+            feedbackRepository.save(feedbackMapper.map(feedbackRequest, user.getUserId(), eventId));
+        }
+    }
+
+    public FeedbackResponse getAllFeedbacks(Long eventId) {
+        return feedbackMapper.mapToDto(feedbackRepository.findAllByEventId(eventId));
+    }
+
+    public EventResponse getEvent(Long id) {
+        return eventMapper.mapToDto(eventRepository.findById(id).orElseThrow(() -> new EventNotFoundException("No event by this id")));
+    }
+
 }
 

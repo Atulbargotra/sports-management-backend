@@ -35,7 +35,7 @@ public class Teams {
     private Integer maxMember;
     private String contact;
     private String inviteLink;
-    @ManyToMany(fetch = LAZY,cascade = CascadeType.ALL)
+    @ManyToMany(fetch = LAZY)
     @JoinTable(name = "members",
             joinColumns = @JoinColumn(name = "TEAM_ID", referencedColumnName = "teamId"),
             inverseJoinColumns = @JoinColumn(name = "USER_ID", referencedColumnName = "userId"))

@@ -40,7 +40,7 @@ public class TeamService {
         Teams team = teamsRepository.findById(teamId).orElseThrow(() -> new SpringSportsException("No team with this id"));
         User user = userRepository.findById(userId).orElseThrow(() -> new UsernameNotFoundException("No user with this id"));
         Event event = eventRepository.findById(team.getEventId()).orElseThrow(() -> new EventNotFoundException("No event with this id"));
-        if (!team.getMembers().contains(user) && team.getMembers().size()+1 <= event.getMaxMembersInTeam()) {
+        if (!team.getMembers().contains(user) && team.getMembers().size() <= event.getMaxMembersInTeam()-1) {
             team.getMembers().add(user);
             teamsRepository.save(team);
         } else {
@@ -71,7 +71,7 @@ public class TeamService {
         String name = user.getUsername();
         Teams team = teamsRepository.findById(teamId).orElseThrow(() -> new SpringSportsException("No team with this id"));
         Event event = eventRepository.findById(eventId).orElseThrow(() -> new EventNotFoundException("No event with this id"));
-        if(event.getType().equals(EventType.TEAM) && team.getMembers().size()+1 <=event.getMaxMembersInTeam()){
+        if(event.getType().equals(EventType.TEAM) && team.getMembers().size() <=event.getMaxMembersInTeam()-1){
             String token = TokenUtils.generateToken(user.getUserId()+"!"+teamId);
             String recipient = user.getEmail();
             String teamName = team.getName();

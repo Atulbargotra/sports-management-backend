@@ -1,6 +1,7 @@
 package com.atul.sportsmanagement.security;
 
 import com.atul.sportsmanagement.service.MyUserDetailService;
+import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
@@ -19,12 +20,10 @@ import java.io.IOException;
 import java.util.stream.Collectors;
 
 @Component
+@AllArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
-    @Autowired
-    private JwtProvider jwtProvider;
-    @Autowired
-    private MyUserDetailService userDetailService;
+    private final JwtProvider jwtProvider;
+    private final MyUserDetailService userDetailService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,

@@ -14,11 +14,11 @@ import java.util.List;
 
 @Repository
 public interface EventRepository extends JpaRepository<Event,Long> {
-    List<Event> findEventByEventId(Long id);
-    List<Event> findEventByCreatedDateGreaterThanEqualAndLastDateLessThanEqual(Instant startDate, Instant endDate);
-    List<Event> findEventByType(EventType type);
-    List<Event> findEventByCategory(String category);
-    List<Event> findEventByVenue(String venue);
+//    List<Event> findEventByEventId(Long id);
+//    List<Event> findEventByCreatedDateGreaterThanEqualAndLastDateLessThanEqual(Instant startDate, Instant endDate);
+//    List<Event> findEventByType(EventType type);
+//    List<Event> findEventByCategory(String category);
+//    List<Event> findEventByVenue(String venue);
     List<Event> findAllByOrderByCreatedDateDesc();
 //    @Query("select e from Event e where e.eventDate > :now")
 //    List<Event> ongoingEvents(@Param("now") Instant now);

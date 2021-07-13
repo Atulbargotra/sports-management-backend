@@ -42,13 +42,13 @@ public class Event {
     private Integer maxMembersInTeam;
     private String venue;
     private Instant lastDate;
-    @ManyToMany(fetch = LAZY)
+    @ManyToMany(fetch = LAZY,cascade = CascadeType.ALL)
     @JoinTable(name = "participants_in_event",
             joinColumns = @JoinColumn(name = "EVENT_ID", referencedColumnName = "eventId"),
             inverseJoinColumns = @JoinColumn(name = "USER_ID", referencedColumnName = "userId"))
     private Set<User> participants = new HashSet<>();
 
-    @ManyToMany(fetch = LAZY,cascade = CascadeType.REMOVE)
+    @ManyToMany(fetch = LAZY,cascade = CascadeType.ALL)
     @JoinTable(name = "teams_in_event",
             joinColumns = @JoinColumn(name = "EVENT_ID", referencedColumnName = "eventId"),
             inverseJoinColumns = @JoinColumn(name = "TEAM_ID", referencedColumnName = "teamId"))
