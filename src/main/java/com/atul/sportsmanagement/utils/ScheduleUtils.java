@@ -65,7 +65,6 @@ public class ScheduleUtils {
     }
     static void shuffleArray(String[] ar)
     {
-        // If running on Java 6 or older, use `new Random()` on RHS here
         Random rnd = ThreadLocalRandom.current();
         for (int i = ar.length - 1; i > 0; i--)
         {
@@ -76,10 +75,4 @@ public class ScheduleUtils {
             ar[i] = a;
         }
     }
-
-//    public static void main(String[] args) {
-//        String[] names = {"1", "2", "3", "4", "5"};
-//        System.out.println(ScheduleUtils.generateBySingleElimination(5, names));
-//    }
-
 }
